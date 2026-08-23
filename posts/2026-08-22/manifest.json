@@ -1,0 +1,38 @@
+{
+  "date": "2026-08-22",
+  "slots": {
+    "free": {
+      "title": "TEST FREE FESTIVAL",
+      "caption": "TEST — FREE FESTIVAL rehearsal set. Do not publish for real. This is a pipeline test card for @nycdispatch.",
+      "hashtags": [
+        "#test"
+      ],
+      "images": [
+        "01.jpg",
+        "02.jpg"
+      ]
+    },
+    "food": {
+      "title": "TEST FOOD & MARKET",
+      "caption": "TEST — FOOD & MARKET rehearsal set. Do not publish for real. This is a pipeline test card for @nycdispatch.",
+      "hashtags": [
+        "#test"
+      ],
+      "images": [
+        "01.jpg",
+        "02.jpg"
+      ]
+    },
+    "art": {
+      "title": "TEST IMMERSIVE ART",
+      "caption": "TEST — IMMERSIVE ART rehearsal set. Do not publish for real. This is a pipeline test card for @nycdispatch.",
+      "hashtags": [
+        "#test"
+      ],
+      "images": [
+        "01.jpg",
+        "02.jpg"
+      ]
+    }
+  }
+}
