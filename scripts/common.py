@@ -52,7 +52,11 @@ def pages_base():
 
 
 def image_url(date, slot, filename):
-    return f"{pages_base()}/posts/{date}/{slot}/{filename}"
+    # rev 쿼리로 텔레그램/CDN 캐시를 무효화한다 (같은 경로에 다른 이미지가
+    # 커밋되면 텔레그램이 옛 캐시를 재사용하는 문제 방지).
+    rev = os.environ.get("GITHUB_SHA", "")[:8]
+    suffix = f"?rev={rev}" if rev else ""
+    return f"{pages_base()}/posts/{date}/{slot}/{filename}{suffix}"
 
 
 # ---------------------------------------------------------------- json/state
