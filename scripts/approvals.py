@@ -57,9 +57,15 @@ def main():
     changed = []
     for u in updates:
         tstate["offset"] = max(tstate.get("offset", 0), u["update_id"] + 1)
+        # 진단 로그: 종류만 남긴다. chat id는 Actions가 secret과 같으면 ***로 마스킹하므로
+        # "***"로 찍히면 등록된 chat, 숫자로 찍히면 다른 chat이라는 뜻이다.
+        kinds = [k for k in u if k != "update_id"]
+        print(f"update {u['update_id']}: {kinds}")
         cq = u.get("callback_query")
         if cq is not None:
-            if str(cq.get("message", {}).get("chat", {}).get("id")) != str(chat_id):
+            cq_chat = cq.get("message", {}).get("chat", {}).get("id")
+            print(f"  callback data={cq.get('data')!r} chat={cq_chat}")
+            if str(cq_chat) != str(chat_id):
                 continue  # chat id check — never act on other chats
             verb, _, slot = (cq.get("data") or "").partition(":")
             if verb in ("ok", "skip") and slot in SLOTS:
@@ -69,7 +75,9 @@ def main():
             continue
         msg = u.get("message")
         if msg is not None:
-            if str(msg.get("chat", {}).get("id")) != str(chat_id):
+            m_chat = msg.get("chat", {}).get("id")
+            print(f"  message chat={m_chat} text={str(msg.get('text', ''))[:40]!r}")
+            if str(m_chat) != str(chat_id):
                 continue  # chat id check — never act on other chats
             cmd = parse_command(msg.get("text", ""))
             if cmd:
