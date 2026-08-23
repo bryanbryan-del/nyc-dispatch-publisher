@@ -2,36 +2,62 @@
   "date": "2026-08-23",
   "slots": {
     "free": {
-      "title": "TEST FREE FESTIVAL",
-      "caption": "TEST — FREE FESTIVAL rehearsal set. Do not publish for real. This is a pipeline test card for @nycdispatch.",
+      "title": "Charlie Parker Jazz Festival",
+      "caption": "New York throws Charlie Parker a birthday party in the two neighbourhoods he lived in - and it costs nothing.\n\nThe 34th Charlie Parker Jazz Festival takes over Marcus Garvey Park in Harlem on Friday and Saturday, then Tompkins Square Park in the East Village on Sunday. Saturday Aug 29 is Bird's actual birthday - he was born that day in 1920. Sunday's stage sits across from 151 Avenue B, his landmarked home, on a block the city co-named Charlie Parker Place.\n\nLINEUP\nFri 8/28, Marcus Garvey - Jazz at Lincoln Center Orchestra with Sherman Irby, guests Marquis Hill and Ekep Nkwelle, plus Bill Saxton Harlem All-Stars\nSat 8/29, Marcus Garvey - Joshua Redman, Nat Adderley Jr., Catherine Russell, Nicole Glover, DJ Kultured Child\nSun 8/30, Tompkins Square - Ravi Coltrane, Billy Hart Quartet, Kassa Overall, Vanisha Gould\n\nWHEN: Fri Aug 28, 7-9:30PM. Sat Aug 29, 2-7PM. Sun Aug 30, 3-7PM.\nWHERE: Marcus Garvey Park, 18 Mount Morris Park West, Harlem (Fri + Sat). Tompkins Square Park, Ave A to Ave B between E 7th and E 10th, East Village (Sun).\nCOST: Free. No tickets, no RSVP, first come first served.\n\nFolding chairs are allowed at both parks, unlike Central Park SummerStage. Blankets and outside food are fine. No coolers, glass, cans, alcohol or bags over 16x16x8. Rain or shine, and there is no reschedule.\n\nFull schedule: https://cityparksfoundation.org/charlieparker/",
       "hashtags": [
-        "#test"
+        "#nyc",
+        "#charlieparker",
+        "#jazz",
+        "#freenyc",
+        "#thingstodoinnyc"
       ],
       "images": [
         "01.jpg",
-        "02.jpg"
+        "02.jpg",
+        "03.jpg",
+        "04.jpg",
+        "05.jpg",
+        "06.jpg",
+        "07.jpg"
       ]
     },
     "food": {
-      "title": "TEST FOOD & MARKET",
-      "caption": "TEST — FOOD & MARKET rehearsal set. Do not publish for real. This is a pipeline test card for @nycdispatch.",
+      "title": "JAPAN Fes - East Village",
+      "caption": "Two East Village streets, two days, 34 Japanese food stalls - and no ticket.\n\nJAPAN Fes runs a back-to-back double header in the East Village next weekend. Saturday takes Broadway between E 8th and E 9th with 18 stalls; Sunday moves one block to 4th Avenue between E 9th and E 10th with 16. Same hours both days, and the organisers have a $5 mini-bite menu running across vendors this season.\n\nWHAT TO EAT: Menya Jiro (listed on the official lineup as award-winning ramen), Yakitori Iccho for momo, negima, unagi and whole shishamo, Tanota Takoyaki (classic or mango habanero), and the Karaageya vs Karaage Kun fried chicken face-off - one marinates two days, the other does four flavours. Shaved Ice Tokyo is Saturday only; Sweet Crunch TangHulu swaps in on Sunday.\n\nWHEN: Sat Aug 29 and Sun Aug 30, 10AM - 6PM both days.\nWHERE: Sat - Broadway, E 8th to E 9th St. Sun - 4th Ave, E 9th to E 10th St. East Village, Manhattan. 8 St-NYU (R/W) or Astor Place (6).\nCOST: Open street, no ticket. Pay per dish, mini bites from $5.\n\nGet there at 10 - ramen and karaage lines are longest by early afternoon and popular items sell out. Bring cash and a card, the vendor mix is split. There is no seating.\n\nFull lineup: https://www.japanfes.com/2026",
       "hashtags": [
-        "#test"
+        "#nyc",
+        "#eastvillage",
+        "#nycfood",
+        "#japanfes",
+        "#streetfood"
       ],
       "images": [
         "01.jpg",
-        "02.jpg"
+        "02.jpg",
+        "03.jpg",
+        "04.jpg",
+        "05.jpg",
+        "06.jpg",
+        "07.jpg"
       ]
     },
     "art": {
-      "title": "TEST IMMERSIVE ART",
-      "caption": "TEST — IMMERSIVE ART rehearsal set. Do not publish for real. This is a pipeline test card for @nycdispatch.",
+      "title": "The Black Mirror Experience",
+      "caption": "The only Black Mirror episode you can walk into - and it leaves New York on Sept 6.\n\nThe US premiere of The Black Mirror Experience is at The Shed in Hudson Yards. You put on an untethered VR headset and physically walk through the sets of a fictional tech company for about 60 minutes, in a group of 1 to 6, as the protagonist of an original standalone story. They scan your face and voice into an AI avatar called a LifeAgent on the way in (deleted after four weeks). It picked up a Special Mention in the Immersive Competition at Cannes 2026.\n\nWHEN: Tue-Sun, closed Mondays. Tue-Fri 4-7:30PM, Sat 11:30AM-7:30PM, Sun 11:30AM-5PM. Timed entry, arrive 15 min early. Final day Sun Sept 6.\nWHERE: The Shed, 545 West 30th St, Hudson Yards, Manhattan. 7 train to 34 St-Hudson Yards.\nCOST: Tickets from $33.35. Date changes up to 48 hours out, no refunds.\nAges 12+. No bags or coats inside - lockers on site.\n\nTickets and full details: https://nyc.theblackmirrorexperience.com\n\nSave this one for a weekday evening, then walk the High Line south to Chelsea Market.",
       "hashtags": [
-        "#test"
+        "#nyc",
+        "#blackmirror",
+        "#immersiveart",
+        "#hudsonyards",
+        "#thingstodoinnyc"
       ],
       "images": [
         "01.jpg",
-        "02.jpg"
+        "02.jpg",
+        "03.jpg",
+        "04.jpg",
+        "05.jpg",
+        "06.jpg"
       ]
     }
   }
