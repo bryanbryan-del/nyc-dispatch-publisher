@@ -46,11 +46,22 @@ def apply(state, verb, slots):
 def main():
     chat_id = env("TELEGRAM_CHAT_ID")
     tstate = read_json(ROOT / "state" / "telegram.json", {"offset": 0})
-    updates = tg("getUpdates", {
-        "offset": tstate.get("offset", 0),
-        "timeout": 0,
-        "allowed_updates": ["message", "callback_query"],
-    }) or []
+    # timeout 20 = long poll: 실행 직전에 온 메시지도 잡고, 같은 토큰으로
+    # getUpdates 중인 다른 프로세스가 있으면 Telegram이 409 Conflict를 돌려줘
+    # 경쟁 소비자의 존재가 로그에 드러난다.
+    try:
+        updates = tg("getUpdates", {
+            "offset": tstate.get("offset", 0),
+            "timeout": 20,
+            "allowed_updates": ["message", "callback_query"],
+        }) or []
+    except RuntimeError as e:
+        if "Conflict" in str(e) or "terminated by other" in str(e):
+            raise RuntimeError(
+                "getUpdates conflict: 같은 봇 토큰으로 폴링 중인 다른 프로세스가 있습니다. "
+                "PC/다른 세션에서 돌고 있는 봇 스크립트를 종료하세요."
+            ) from None
+        raise
 
     date = today_et()
     state = load_state(date)
