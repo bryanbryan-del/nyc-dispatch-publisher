@@ -1,0 +1,130 @@
+"""Publish one approved slot to Instagram as a carousel.
+
+The approval gate is the heart of this pipeline: a slot is published ONLY
+when today's state has approvals[slot] is True (checked with `is True`, so
+None/False/anything else never publishes). Do not weaken or remove it.
+
+On cron the slot is derived from the ET hour (free 8:xx / food 12:xx /
+art 18:xx); firings at other ET hours (the "wrong" DST twin) exit quietly.
+--dry-run walks the whole flow (manifest, approval, Pages image checks) and
+prints the Graph API calls it would make, without touching Telegram or IG.
+"""
+import argparse
+import os
+import sys
+import time
+
+import requests
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from common import (  # noqa: E402
+    MAX_HASHTAGS, SLOT_HOURS, SLOTS, env, graph_get, graph_post, image_url,
+    load_manifest, load_state, now_et, save_state, tg_send, today_et,
+)
+
+
+def slot_from_time():
+    hour = now_et().hour
+    for slot, h in SLOT_HOURS.items():
+        if hour == h:
+            return slot
+    return None
+
+
+def run(slot, dry_run):
+    date = today_et()
+    manifest = load_manifest(date)
+    if not manifest or slot not in manifest.get("slots", {}):
+        print(f"no manifest entry for {date}/{slot}; nothing to do")
+        return
+    state = load_state(date)
+
+    # approval gate — publish only on an explicit True. Do not change.
+    if state["approvals"].get(slot) is not True:
+        print(f"{slot} not approved (approvals[{slot}]={state['approvals'].get(slot)!r}); "
+              "nothing published")
+        return
+    if slot in state.get("published", {}):
+        print(f"{slot} already published today "
+              f"({state['published'][slot].get('permalink', '')}); exiting")
+        return
+
+    info = manifest["slots"][slot]
+    urls = [image_url(date, slot, f) for f in info["images"]]
+    if not 2 <= len(urls) <= 10:
+        raise RuntimeError(f"carousel needs 2-10 images, got {len(urls)}")
+    for u in urls:  # Pages must serve every image before IG gets the URLs
+        r = requests.get(u, timeout=30, stream=True)
+        r.close()
+        if r.status_code != 200:
+            raise RuntimeError(f"image not reachable (HTTP {r.status_code}): {u}")
+
+    hashtags = [t if t.startswith("#") else "#" + t for t in info.get("hashtags", [])]
+    hashtags = hashtags[:MAX_HASHTAGS]  # IG rule of this account: 5 max, excess dropped
+    caption = info.get("caption", "").strip()
+    if hashtags:
+        caption = f"{caption}\n\n{' '.join(hashtags)}".strip()
+    caption = caption[:2200]
+
+    ig_user = env("IG_USER_ID")
+    if dry_run:
+        for u in urls:
+            print(f"[dry-run] graph POST /{ig_user}/media image_url={u} is_carousel_item=true")
+        print(f"[dry-run] graph POST /{ig_user}/media media_type=CAROUSEL "
+              f"children=<{len(urls)} ids> caption=<{len(caption)} chars>")
+        print(f"[dry-run] graph POST /{ig_user}/media_publish creation_id=<carousel container>")
+        print(f"[dry-run] {slot} would be published with {len(urls)} images")
+        return
+
+    children = []
+    for u in urls:
+        res = graph_post(f"{ig_user}/media", {"image_url": u, "is_carousel_item": "true"})
+        children.append(res["id"])
+        print(f"child container {len(children)}/{len(urls)} created")
+    car = graph_post(f"{ig_user}/media", {
+        "media_type": "CAROUSEL",
+        "children": ",".join(children),
+        "caption": caption,
+    })
+    creation_id = car["id"]
+    for _ in range(36):  # carousel containers can take a couple minutes to process
+        status = graph_get(creation_id, {"fields": "status_code"}).get("status_code", "")
+        if status == "FINISHED":
+            break
+        if status == "ERROR":
+            raise RuntimeError("carousel container processing returned ERROR")
+        time.sleep(5)
+    pub = graph_post(f"{ig_user}/media_publish", {"creation_id": creation_id})
+    media_id = pub["id"]
+    permalink = graph_get(media_id, {"fields": "permalink"}).get("permalink", "")
+
+    state.setdefault("published", {})[slot] = {
+        "media_id": media_id,
+        "permalink": permalink,
+        "at": now_et().isoformat(timespec="seconds"),
+    }
+    save_state(date, state)
+    tg_send(f"📤 {slot.upper()} 게시 완료\n{permalink}", ignore_errors=True)
+    print(f"published {slot}: {permalink}")
+
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--slot", default="", help="free/food/art (빈 값이면 ET 시각으로 결정)")
+    ap.add_argument("--dry-run", action="store_true")
+    args = ap.parse_args()
+
+    slot = args.slot.strip().lower() or slot_from_time()
+    if slot not in SLOTS:
+        print(f"no slot for this run (ET now {now_et():%H:%M}); exiting")
+        return
+    try:
+        run(slot, args.dry_run)
+    except Exception as e:  # error text is token-free by construction (common.py)
+        if not args.dry_run:
+            tg_send(f"❌ {slot.upper()} 게시 실패: {e}", ignore_errors=True)
+        raise
+
+
+if __name__ == "__main__":
+    main()

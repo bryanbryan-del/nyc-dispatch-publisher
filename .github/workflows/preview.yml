@@ -1,0 +1,38 @@
+# 아침 미리보기: 텔레그램으로 오늘 세트 3개(앨범+캡션+승인 버튼)를 보낸다.
+# cron은 UTC로 EDT/EST 두 경우를 모두 커버하고, 스크립트가 ET 7:30-8:15 창인지 판단한다.
+name: preview
+on:
+  schedule:
+    - cron: "50 11,12 * * *" # 7:50 ET (EDT=11:50 UTC, EST=12:50 UTC)
+  workflow_dispatch: {}
+
+concurrency:
+  group: pipeline-state
+
+permissions:
+  contents: write
+
+jobs:
+  preview:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r requirements.txt
+      - name: Send preview to Telegram
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: python scripts/preview.py
+      - name: Commit state
+        if: always()
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add state
+          if git diff --cached --quiet; then echo "no state changes"; exit 0; fi
+          git commit -m "state: preview $(date -u +%FT%TZ)"
+          git pull --rebase origin main
+          git push origin main

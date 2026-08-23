@@ -1,0 +1,25 @@
+# 연결 자가진단: 시크릿 존재, 텔레그램 봇, Instagram Graph, GitHub Pages.
+# 결과는 로그(✅/❌)와 텔레그램으로 보고된다. 수동 실행 전용.
+name: selftest
+on:
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  selftest:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r requirements.txt
+      - name: Run selftest
+        env:
+          IG_ACCESS_TOKEN: ${{ secrets.IG_ACCESS_TOKEN }}
+          IG_USER_ID: ${{ secrets.IG_USER_ID }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: python scripts/selftest.py
