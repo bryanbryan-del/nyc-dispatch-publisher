@@ -1,14 +1,19 @@
 {
   "approvals": {
-    "free": true,
-    "food": null,
-    "art": null
+    "free": false,
+    "food": true,
+    "art": true
   },
   "published": {
     "free": {
       "media_id": "18113548846970611",
       "permalink": "https://www.instagram.com/p/DcbnxYlm6pF/",
       "at": "2026-08-24T13:41:00-04:00"
+    },
+    "food": {
+      "media_id": "18484202863105902",
+      "permalink": "https://www.instagram.com/p/Dcb6E8sk65E/",
+      "at": "2026-08-24T16:20:58-04:00"
     }
   }
 }
