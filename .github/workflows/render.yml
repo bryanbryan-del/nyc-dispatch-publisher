@@ -1,0 +1,98 @@
+# 카드 렌더링: 클라우드 아침 작업이 Drive uploads/<날짜>/spec.json(텍스트)만 올리면
+# 여기서 사진을 받아 카드를 그리고 posts/<날짜>/ 로 커밋한다.
+# 클라우드 세션은 이미지를 Drive/GitHub 어디에도 올릴 수 없어서(base64 컨텍스트 한계,
+# 프록시 차단) 렌더링 자체를 Actions 로 옮긴 것이다. ingest.yml 은 그대로 두면 되고,
+# posts/<날짜>/manifest.json 이 이미 있으면 ingest 는 조용히 건너뛴다.
+name: render
+on:
+  schedule:
+    - cron: "20,35 11,12 * * *" # 7:20 / 7:35 ET (EDT+EST 커버)
+  workflow_dispatch:
+    inputs:
+      date:
+        description: "날짜 override (비우면 오늘 ET)"
+        required: false
+      force:
+        description: "이미 있어도 다시 렌더링"
+        type: boolean
+        default: false
+
+concurrency:
+  group: pipeline-state
+
+permissions:
+  contents: write
+
+jobs:
+  render:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - run: pip install -r requirements.txt numpy matplotlib
+      - run: npm i playwright@1.47.2 && npx playwright@1.47.2 install --with-deps chromium
+
+      - name: Fetch spec + scripts from Drive
+        env:
+          GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
+          RENDER_DATE: ${{ inputs.date }}
+          FORCE: ${{ inputs.force == true && '1' || '' }}
+        run: |
+          python - <<'PY'
+          import os, sys, requests
+          sys.path.insert(0, "scripts")
+          from ingest import drive_token, gd, gd_children, gd_download, UPLOADS_FOLDER_ID
+          from common import ROOT, today_et
+
+          date = (os.environ.get("RENDER_DATE") or "").strip() or today_et()
+          open("RENDER_DATE.txt", "w").write(date)
+          if (ROOT / "posts" / date / "manifest.json").exists() and os.environ.get("FORCE") != "1":
+              print(f"posts/{date}/manifest.json 이 이미 있음 - 건너뜀"); open("SKIP","w").write("1"); raise SystemExit(0)
+          s = requests.Session(); s.headers["Authorization"] = f"Bearer {drive_token()}"
+          day = gd(s, {"q": f"'{UPLOADS_FOLDER_ID}' in parents and name='{date}' "
+                            "and mimeType='application/vnd.google-apps.folder' and trashed=false",
+                       "fields": "files(id,name)", "supportsAllDrives": "true",
+                       "includeItemsFromAllDrives": "true"})
+          if not day:
+              print(f"Drive 에 {date} 폴더 없음 - 건너뜀"); open("SKIP","w").write("1"); raise SystemExit(0)
+          entries = {f["name"]: f for f in gd_children(s, day[0]["id"])}
+          if "spec.json" not in entries:
+              print("spec.json 없음 - 건너뜀"); open("SKIP","w").write("1"); raise SystemExit(0)
+          os.makedirs("rtool", exist_ok=True)
+          root = {f["name"]: f for f in gd_children(s, UPLOADS_FOLDER_ID)}
+          for name in ("spec.json", "build.py", "render_cards.py"):
+              src = entries.get(name) or root.get(name)
+              if not src:
+                  raise SystemExit(f"Drive 에서 {name} 를 찾지 못했습니다")
+              open(f"rtool/{name}", "wb").write(gd_download(s, src["id"]))
+              print("  받음:", name)
+          PY
+
+      - name: Render cards
+        if: ${{ hashFiles('SKIP') == '' }}
+        env:
+          RENDER_WORK: rtool/work
+        run: |
+          python - <<'PY'
+          import json, sys
+          sys.path.insert(0, "rtool")
+          import render_cards
+          render_cards.run(json.load(open("rtool/spec.json")), ".")
+          PY
+
+      - name: Commit posts
+        if: ${{ hashFiles('SKIP') == '' }}
+        run: |
+          rm -rf rtool RENDER_DATE.txt SKIP
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add posts
+          if git diff --cached --quiet; then echo "변경 없음"; exit 0; fi
+          git commit -m "cards $(TZ=America/New_York date +%F) (actions render)"
+          git pull --rebase origin main
+          git push origin main
