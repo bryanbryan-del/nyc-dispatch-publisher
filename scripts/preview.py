@@ -13,7 +13,8 @@ from common import (  # noqa: E402
     save_state, tg, tg_send, today_et,
 )
 
-SLOT_LABELS = {"free": "🆓 FREE (1)", "food": "🌮 FOOD (2)", "art": "🎨 ART (3)"}
+SLOT_LABELS = {"free": "🆓 FREE (1)", "food": "🌮 FOOD (2)", "gem": "💎 GEM (3)",
+               "art": "🎨 ART (4)", "night": "🌙 NIGHT (5)"}
 
 
 def in_window():
