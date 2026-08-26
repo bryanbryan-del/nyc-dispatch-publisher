@@ -1,6 +1,6 @@
 # 승인된 슬롯만 게시: 먼저 텔레그램 승인(버튼/명령)을 수집하고, publisher가
 # approvals[slot] is True 인 경우에만 Instagram Graph API로 캐러셀을 올린다.
-# cron은 UTC로 EDT/EST를 모두 커버하고, 스크립트가 ET 시각(8/12/18시)으로 슬롯을 정한다.
+# cron은 UTC로 EDT/EST를 모두 커버하고, 스크립트가 ET 시각(10/12/15/18/20시)으로 슬롯을 정한다.
 name: publish
 on:
   schedule:
