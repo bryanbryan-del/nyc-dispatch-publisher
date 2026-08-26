@@ -81,11 +81,24 @@ def run(slot, dry_run):
         res = graph_post(f"{ig_user}/media", {"image_url": u, "is_carousel_item": "true"})
         children.append(res["id"])
         print(f"child container {len(children)}/{len(urls)} created")
-    car = graph_post(f"{ig_user}/media", {
+    car_params = {
         "media_type": "CAROUSEL",
         "children": ",".join(children),
         "caption": caption,
-    })
+    }
+    # 위치 태그: 인스타 지도(Places)에서 발견되는 경로라 붙일 수 있으면 붙인다.
+    # 캐러셀 컨테이너에 location_id 가 먹는지는 문서에 명시가 없어서, 실패하면
+    # 위치 없이 한 번 더 시도한다. 게시 자체가 실패하면 안 되기 때문이다.
+    loc = (info.get("location_id") or "").strip()
+    if loc:
+        try:
+            car = graph_post(f"{ig_user}/media", {**car_params, "location_id": loc})
+            print(f"carousel container created with location_id={loc}")
+        except Exception as e:
+            print(f"location_id={loc} 거부됨 ({e}); 위치 없이 재시도")
+            car = graph_post(f"{ig_user}/media", car_params)
+    else:
+        car = graph_post(f"{ig_user}/media", car_params)
     creation_id = car["id"]
     for _ in range(36):  # carousel containers can take a couple minutes to process
         status = graph_get(creation_id, {"fields": "status_code"}).get("status_code", "")
