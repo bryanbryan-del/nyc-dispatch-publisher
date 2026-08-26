@@ -18,8 +18,8 @@ from zoneinfo import ZoneInfo
 import requests
 
 ET = ZoneInfo("America/New_York")
-SLOTS = ("free", "food", "art")
-SLOT_HOURS = {"free": 8, "food": 12, "art": 18}  # ET publish hours (minute 30)
+SLOTS = ("free", "food", "gem", "art", "night")
+SLOT_HOURS = {"free": 10, "food": 12, "gem": 15, "art": 18, "night": 20}  # ET publish hours (minute 30)
 MAX_HASHTAGS = 5
 GRAPH = "https://graph.facebook.com/v22.0"
 
