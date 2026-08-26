@@ -17,7 +17,7 @@ from common import (  # noqa: E402
     today_et, write_json,
 )
 
-NUM2SLOT = {"1": "free", "2": "food", "3": "art"}
+NUM2SLOT = {"1": "free", "2": "food", "3": "gem", "4": "art", "5": "night"}
 
 
 def parse_command(text):
