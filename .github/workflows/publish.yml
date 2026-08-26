@@ -4,13 +4,13 @@
 name: publish
 on:
   schedule:
-    - cron: "30 12,13,16,17,22,23 * * *" # 8:30/12:30/18:30 ET (EDT+EST 커버)
+    - cron: "30 0,1,14,15,16,17,19,20,22,23 * * *" # 10:30/12:30/15:30/18:30/20:30 ET (EDT+EST 커버)
   workflow_dispatch:
     inputs:
       slot:
         description: "슬롯"
         type: choice
-        options: [free, food, art]
+        options: [free, food, art, gem, art, night]
         required: true
       dry_run:
         description: "dry run (실제 게시 안 함)"
