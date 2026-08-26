@@ -10,7 +10,7 @@ on:
       slot:
         description: "슬롯"
         type: choice
-        options: [free, food, art, gem, art, night]
+        options: [free, food, gem, art, night]
         required: true
       dry_run:
         description: "dry run (실제 게시 안 함)"
