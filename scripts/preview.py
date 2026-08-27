@@ -1,15 +1,20 @@
 """Send today's card sets to Telegram as albums with approval buttons.
 
-The cron fires at 11:50 and 12:50 UTC; only the firing that lands inside the
-7:30-8:15 ET window proceeds (the other exits quietly), so exactly one
-preview goes out per day regardless of DST. Manual dispatch always runs.
+실행 경로는 세 가지다:
+  - push: render/수동 커밋으로 posts/ 가 바뀌면 즉시 발송 (지연과 무관하게 카드를 따라감)
+  - cron(11:50/12:50 UTC): push 를 놓친 날의 백업
+  - workflow_dispatch: 수동 재발송 (항상 발송)
+
+시간 창 검사는 쓰지 않는다 - cron 지연으로 창을 벗어나면 미리보기가 조용히
+누락되는 사고가 있었다(2026-08-25). 대신 state 의 preview_sent 플래그로
+하루 1회만 발송하고, 수동 실행만 플래그를 무시하고 재발송한다.
 """
 import os
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from common import (  # noqa: E402
-    MAX_HASHTAGS, SLOTS, env, image_url, load_manifest, load_state, now_et,
+    MAX_HASHTAGS, SLOTS, env, image_url, load_manifest, load_state,
     save_state, tg, tg_send, today_et,
 )
 
@@ -17,24 +22,26 @@ SLOT_LABELS = {"free": "🆓 FREE (1)", "food": "🌮 FOOD (2)", "gem": "💎 GE
                "art": "🎨 ART (4)", "night": "🌙 NIGHT (5)"}
 
 
-def in_window():
-    n = now_et()
-    return (n.hour == 7 and n.minute >= 30) or (n.hour == 8 and n.minute <= 15)
-
-
 def main():
-    manual = os.environ.get("GITHUB_EVENT_NAME", "") == "workflow_dispatch"
-    if not manual and not in_window():
-        print(f"outside ET preview window (ET now {now_et():%H:%M}); exiting")
-        return
+    event = os.environ.get("GITHUB_EVENT_NAME", "")
+    manual = event == "workflow_dispatch"
     date = today_et()
     manifest = load_manifest(date)
+    state = load_state(date)
+
     if not manifest:
-        tg_send(f"⚠️ {date} manifest.json이 repo에 없습니다. 아침 카드 업로드가 실행됐는지 확인해 주세요.")
+        # 경고는 하루 1회만 (cron 이 EDT/EST 두 번 발화해도 중복 경고 없음)
+        if manual or not state.get("preview_warned"):
+            tg_send(f"⚠️ {date} manifest.json이 repo에 없습니다. 아침 카드 렌더링이 실행됐는지 확인해 주세요.")
+            state["preview_warned"] = True
+            save_state(date, state)
         print(f"no manifest for {date}")
         return
 
-    state = load_state(date)
+    if state.get("preview_sent") and not manual:
+        print(f"preview already sent for {date}; skipping ({event})")
+        return
+
     sent = 0
     for slot in SLOTS:
         info = manifest.get("slots", {}).get(slot)
@@ -45,7 +52,7 @@ def main():
         hashtags = " ".join(info.get("hashtags", [])[:MAX_HASHTAGS])
         text = "\n\n".join(
             part for part in (
-                f"{SLOT_LABELS[slot]} — {info.get('title', '')}".strip(" —"),
+                f"{SLOT_LABELS.get(slot, slot.upper())} — {info.get('title', '')}".strip(" —"),
                 info.get("caption", "").strip(),
                 hashtags,
             ) if part
@@ -57,13 +64,15 @@ def main():
         tg_send(text[:4000], reply_markup=buttons)
         sent += 1
 
-    save_state(date, state)  # ensures today's state file exists with pending approvals
+    state["preview_sent"] = True
+    save_state(date, state)  # 오늘 state 파일 생성 + 발송 플래그
     tg_send(
         "미리보기 끝. 버튼을 누르거나 글로 승인하세요: "
-        "`ok all` / `ok free` / `ok 1 3` / `skip food`",
+        "`ok all` / `ok free` / `ok 1 3` / `skip food`\n"
+        "승인은 10분 안에 '승인 상태 변경' 확인 메시지로 답장됩니다.",
         parse_mode="Markdown",
     )
-    print(f"preview sent for {date}: {sent} slot(s)")
+    print(f"preview sent for {date}: {sent} slot(s) ({event})")
 
 
 if __name__ == "__main__":

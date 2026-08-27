@@ -4,8 +4,9 @@ The approval gate is the heart of this pipeline: a slot is published ONLY
 when today's state has approvals[slot] is True (checked with `is True`, so
 None/False/anything else never publishes). Do not weaken or remove it.
 
-On cron the slot is derived from the ET hour (free 8:xx / food 12:xx /
-art 18:xx); firings at other ET hours (the "wrong" DST twin) exit quietly.
+On cron the slot is derived from the ET hour (free 10:xx / food 12:xx /
+gem 15:xx / art 18:xx / night 20:xx); firings at other ET hours (the
+"wrong" DST twin) exit quietly.
 --dry-run walks the whole flow (manifest, approval, Pages image checks) and
 prints the Graph API calls it would make, without touching Telegram or IG.
 """
@@ -123,7 +124,7 @@ def run(slot, dry_run):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--slot", default="", help="free/food/art (빈 값이면 ET 시각으로 결정)")
+    ap.add_argument("--slot", default="", help="free/food/gem/art/night (빈 값이면 ET 시각으로 결정)")
     ap.add_argument("--dry-run", action="store_true")
     args = ap.parse_args()
 

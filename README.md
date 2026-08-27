@@ -1,129 +1,123 @@
 # nyc-dispatch-publisher
 
-Instagram **@nycdispatch** 자동 게시 파이프라인. 아침 카드 제작(Cowork 스케줄 작업)이
-`posts/<날짜>/`를 커밋하면, GitHub Actions가 **텔레그램 미리보기 → Bryan 버튼 승인 →
-승인된 슬롯만 8:30 / 12:30 / 18:30 ET에 Instagram Graph API로 캐러셀 게시**를 처리한다.
+Instagram **@nycdispatch** 자동 게시 파이프라인. 아침 Cowork 예약 작업이 카드 내용
+(spec.json)을 Drive에 올리면, GitHub Actions가 **카드 렌더링 → 텔레그램 미리보기 →
+Bryan 승인 → 승인된 슬롯만 정해진 시각에 Instagram 캐러셀 게시**를 처리한다.
 **승인 없으면 아무것도 나가지 않는다.**
 
-## 1. 흐름
+## 1. 하루 흐름 (ET)
 
 ```
-07:00 ET  Cowork 아침 작업이 카드 6장 x 3세트 제작 → scripts/upload.py로 posts/<날짜>/ 커밋
-07:50 ET  preview.yml   → 텔레그램에 앨범 3개 + 캡션 + ✅/⏭ 버튼
-   ~      Bryan이 버튼 또는 글(`ok all` 등)로 승인
-08:30 ET  publish.yml   → approvals 수집 → free 슬롯 approvals[free] is True면 게시
-12:30 ET  publish.yml   → food
-18:30 ET  publish.yml   → art
+~7:00   Cowork 예약 작업: 이벤트 조사 → spec.json 을 Drive uploads/<날짜>/ 에 업로드
+7:20/35 render.yml  → Drive에서 spec+build.py+render_cards.py 를 받아 카드 렌더링,
+                      posts/<날짜>/ 커밋 → 커밋되면 preview 를 직접 발동
+(즉시)  preview.yml → 텔레그램에 슬롯별 앨범 + 캡션 + ✅/⏭ 버튼 (하루 1회, 재발송은 수동 실행)
+10분마다 approvals.yml → 버튼/글 승인을 수거해 state 기록, "승인 상태 변경 ✅" 확인 답장
+10:30   publish.yml → free   (approvals[free] is True 일 때만)
+12:30   publish.yml → food
+15:30   publish.yml → gem
+18:30   publish.yml → art
+20:30   publish.yml → night
 ```
 
-이미지는 GitHub Pages(main 브랜치 root)로 서빙된다:
-`https://bryanbryan-del.github.io/nyc-dispatch-publisher/posts/<날짜>/<slot>/01.jpg`
+이미지는 GitHub Pages(main root)로 서빙: `https://bryanbryan-del.github.io/nyc-dispatch-publisher/posts/<날짜>/<slot>/01.jpg`
+(URL에 `?rev=<commit>` 캐시버스터가 붙는다)
 
 ## 2. 파일 구성
 
 | 경로 | 역할 |
 |---|---|
-| `.github/workflows/preview.yml` | 아침 미리보기 (cron 11:50/12:50 UTC, ET 창은 스크립트가 판단) |
-| `.github/workflows/publish.yml` | 슬롯 게시 (cron 12:30/13:30/16:30/17:30/22:30/23:30 UTC) |
-| `.github/workflows/selftest.yml` | 연결 자가진단 (수동 실행) |
-| `scripts/common.py` | 공용: ET 시간, 상태 파일, 텔레그램/Graph API 헬퍼 (토큰 노출 없는 에러) |
-| `scripts/preview.py` | 앨범 + 캡션 + 승인 버튼 발송, 오늘 state 파일 생성 |
-| `scripts/approvals.py` | 텔레그램 getUpdates 폴링 → 버튼/글 명령을 오늘 state에 반영 |
-| `scripts/publisher.py` | **approvals[slot] is True일 때만** 캐러셀 게시. `--dry-run` 지원 |
-| `scripts/selftest.py` | 시크릿/텔레그램/Instagram/Pages 점검 (✅/❌) |
-| `scripts/upload.py` | 아침 작업이 카드+manifest를 커밋할 때 쓰는 독립 실행 스크립트 |
-| `posts/` | `posts/<날짜>/<slot>/NN.jpg` + `posts/<날짜>/manifest.json` |
-| `state/` | `state/<날짜>.json`(승인·게시 기록), `state/telegram.json`(getUpdates offset) |
-| `RUNBOOK_ADDENDUM.md` | 아침 Cowork 작업 프롬프트에 붙일 업로드 문단 |
+| `.github/workflows/render.yml` | Drive의 spec.json으로 카드 렌더링 → posts/ 커밋 → preview 발동. 실패 시 텔레그램 알림 |
+| `.github/workflows/preview.yml` | 미리보기 발송. posts/ push·cron(7:50 ET 백업)·수동. `preview_sent` 플래그로 하루 1회 |
+| `.github/workflows/approvals.yml` | 10분마다 승인 수거 + 변경 시 확인 답장 |
+| `.github/workflows/publish.yml` | 슬롯 게시 cron (UTC 0,1,14-17,19,20,22,23시 30분 = 5슬롯 × EDT/EST) |
+| `.github/workflows/ingest.yml` | (fallback) Drive에 완성 이미지가 올라온 날짜를 반입. manifest가 이미 있으면 스킵 |
+| `.github/workflows/selftest.yml` | 시크릿/텔레그램/Instagram/Pages 연결 자가진단 (수동) |
+| `scripts/common.py` | SLOTS·SLOT_HOURS·ET 시간·state·텔레그램/Graph 헬퍼 (토큰 노출 없는 에러) |
+| `scripts/preview.py` / `approvals.py` / `publisher.py` | 각 워크플로 본체 |
+| `scripts/ingest.py` / `upload.py` | fallback 반입 / (구버전) 직접 업로드 |
+| `posts/<날짜>/` | `<slot>/01.jpg...` + `manifest.json` |
+| `state/<날짜>.json` | approvals·published·preview_sent 플래그. `state/telegram.json`=getUpdates offset (지우지 말 것) |
 
 ## 3. 스키마
 
-`posts/<날짜>/manifest.json`:
+`posts/<날짜>/manifest.json` (render.yml이 spec으로부터 생성):
 
 ```json
 {
-  "date": "2026-08-23",
+  "date": "2026-08-27",
   "slots": {
     "free": {
-      "title": "Summer Streets Festival",
-      "caption": "영어 캡션 본문 (해시태그 제외)",
-      "hashtags": ["#nyc", "#nycevents", "#thingstodoinnyc", "#summerstreets", "#free"],
-      "images": ["01.jpg", "02.jpg", "03.jpg", "04.jpg", "05.jpg", "06.jpg"]
+      "title": "이벤트명",
+      "caption": "영어 캡션 (해시태그 제외, 첫 1-2줄 훅)",
+      "hashtags": ["#nyc", "...최대 5개"],
+      "images": ["01.jpg", "..."],
+      "location_id": "선택: 인스타 위치 태그 id(숫자)"
     },
-    "food": { "...": "동일 구조" },
-    "art":  { "...": "동일 구조" }
+    "food": {}, "gem": {}, "art": {}, "night": {}
   }
 }
 ```
 
-- 해시태그는 **세트당 5개 이하** (초과분은 publisher가 자른다).
-- 이미지는 JPEG만(upload.py가 변환), 8MB 이하, 4:5.
-- 캐러셀은 2~10장 (평소 6장).
+- 슬롯은 free/food/gem/art/night 5개. 없는 슬롯은 그냥 건너뛴다.
+- 해시태그 세트당 최대 5개(초과분은 publisher가 자름), 캐러셀 2~10장, 캡션 2,200자 제한.
 
-`state/<날짜>.json` (날짜는 ET 기준):
+`state/<날짜>.json` (ET 날짜):
 
 ```json
 {
-  "approvals": { "free": true, "food": null, "art": false },
-  "published": {
-    "free": { "media_id": "…", "permalink": "https://www.instagram.com/p/…", "at": "2026-08-23T08:31:02-04:00" }
-  }
+  "approvals": { "free": true, "food": null, "gem": false, "art": null, "night": null },
+  "published": { "free": { "media_id": "...", "permalink": "...", "at": "..." } },
+  "preview_sent": true
 }
 ```
 
-- `approvals`: `true`=승인, `false`=건너뛰기, `null`=대기. **`is True`일 때만 게시.**
-- `state/telegram.json`: `{"offset": <마지막 update_id+1>}` — 지우지 말 것.
+- `approvals`: `true`=승인, `false`=건너뛰기, `null`=대기. **`is True`일 때만 게시** (변경 금지).
 
 ## 4. 시간과 DST
 
-cron은 UTC이므로 EDT/EST 두 오프셋을 모두 등록해 두고, 각 스크립트가
-`America/New_York` 현재 시각으로 자기 창(preview: 7:30–8:15 ET, publish: 8/12/18시 ET)이
-아니면 조용히 종료한다. **cron을 바꾸지 말 것.** Actions cron은 5~15분 늦을 수 있다.
+cron은 UTC로 EDT/EST 두 오프셋을 모두 등록하고, 스크립트가 `America/New_York`
+현재 시각으로 자기 슬롯이 아니면 조용히 종료한다. **cron을 바꾸지 말 것.**
+Actions cron은 5~30분 지연될 수 있으며, 미리보기는 push 발동이라 지연과 무관하다.
 
 ## 5. 텔레그램 승인
 
-- 버튼: 미리보기 메시지의 `✅ <SLOT> 승인` / `⏭ <SLOT> 건너뛰기`
-- 글 명령: `ok all` / `ok free` / `ok 1 3` / `skip food` (1=free, 2=food, 3=art, 오늘 세트에 적용)
-- 승인 수집은 게시 워크플로 시작 시점(approvals.py)에 반영된다. 등록된
-  `TELEGRAM_CHAT_ID` 외의 채팅에서 온 업데이트는 전부 무시한다(변경 금지).
+- 버튼 `✅ <SLOT> 승인` / `⏭ 건너뛰기`, 또는 글 명령 `ok all` / `ok free` / `ok 1 3` / `skip food`
+  (1=free 2=food 3=gem 4=art 5=night, 오늘 세트에 적용)
+- 승인은 10분 주기 approvals 워크플로가 수거하며, 반영되면 **"승인 상태 변경: ✅ FREE" 확인
+  메시지가 온다.** 이 메시지가 곧 "잘 눌렸다"는 증거다.
+- 등록된 `TELEGRAM_CHAT_ID` 외의 채팅은 전부 무시 (변경 금지).
 
 ## 6. 수동 실행
 
 ```bash
 gh workflow run selftest.yml
-gh workflow run preview.yml
-gh workflow run publish.yml -f slot=free -f dry_run=true   # 흐름만 검증
-gh workflow run publish.yml -f slot=free                   # 실제 게시 (주의)
+gh workflow run render.yml -f force=true        # 오늘 카드 다시 렌더링
+gh workflow run preview.yml                     # 미리보기 재발송 (수동은 플래그 무시)
+gh workflow run approvals.yml                   # 승인 즉시 수거
+gh workflow run publish.yml -f slot=free -f dry_run=true
+gh workflow run publish.yml -f slot=free        # 슬롯 시각을 놓쳤을 때 수동 게시
 ```
 
-같은 날 재게시: `state/<날짜>.json`의 `published`에서 해당 slot을 지우고 커밋한 뒤
-`gh workflow run publish.yml -f slot=<slot>`.
+같은 날 재게시: `state/<날짜>.json`의 `published`에서 slot 삭제 후 publish 수동 실행.
 
-## 7. 아침 업로드 (upload.py)
-
-아침 작업(Cowork)은 repo를 clone하지 않고 `scripts/upload.py` 한 파일만 받아서 실행한다.
-Fine-grained PAT(`GH_TOKEN`, 이 repo Contents: Read/write만)으로 git data API를 호출해
-`posts/<날짜>/`를 한 커밋으로 올린다. 사용법은 `RUNBOOK_ADDENDUM.md` 참고.
-성공 시 출력: `committed <n> files for <날짜> -> <sha>`.
-
-## 8. 문제 해결
+## 7. 문제 해결
 
 | 증상 | 원인 | 조치 |
 |---|---|---|
-| selftest ❌ telegram | 봇 토큰 오류/봇 차단 | `TELEGRAM_BOT_TOKEN` Secret 재확인, 봇과의 채팅에서 /start |
-| selftest ❌ instagram graph | 토큰 만료·권한, Page-IG 연결 끊김 | System User 토큰 재발급 후 `IG_ACCESS_TOKEN` 업데이트; Page↔Instagram 연결 확인 |
-| selftest ❌ github pages | Pages 미배포/설정 변경 | Settings→Pages가 `main`/root인지 확인, 1~2분 후 재시도 |
-| 미리보기가 안 옴 | manifest 없음 / cron 지연 | `posts/<오늘>/manifest.json` 존재 확인, `gh run list --workflow preview.yml` |
-| 앨범 이미지가 안 뜸 | Pages 배포 전(커밋 직후) | 1~2분 뒤 `curl -sI <이미지 URL>`이 200인지 확인 후 preview 재실행 |
-| `not approved ... nothing published` | 승인 안 함(정상 동작) | 버튼/`ok <slot>` 후 재실행 |
-| `image not reachable (HTTP 404)` | Pages 미배포 또는 파일명 불일치 | manifest `images`와 실제 파일명 비교, Pages 배포 대기 |
-| 게시 중 `graph POST ... failed` | 토큰/권한/미디어 형식 | 에러 메시지의 code 확인; 190=토큰 재발급, 형식이면 JPEG·8MB·4:5 확인 |
-| `carousel container processing ERROR` | 이미지 다운로드 실패/형식 | 이미지 URL 200 확인, JPEG 변환 여부 확인 |
-| upload.py `HTTP 401/403` | GH_TOKEN 만료·권한 부족 | Fine-grained 토큰 재발급 (이 repo, Contents RW) |
-| 같은 update가 중복 반영 | offset 유실 | `state/telegram.json`을 지우지 말 것 (남겨두면 자동 복구) |
+| 렌더링 실패 텔레그램 알림 | spec.json 카드에 when/where/cost 등 키 누락이 대부분 | Drive의 spec.json 확인 후 `render.yml -f force=true` |
+| 미리보기가 안 옴 | render 미실행/실패 (경고 메시지는 하루 1회 옴) | Actions에서 render 로그 확인 → force 재실행 |
+| 승인 확인 답장이 안 옴 | approvals 수거 전(최대 10분) 또는 다른 채팅에서 누름 | 10분 기다려도 없으면 `gh workflow run approvals.yml` |
+| `not approved ... nothing published` | 승인 안 함(정상) | 승인 후 수동 게시 |
+| `API access blocked (code 200)` | Meta 계정/앱 임시 제한 | developers.facebook.com 계정 확인 완료 후 재시도, 반복 호출 금지 |
+| `image not reachable (HTTP 404)` | Pages 배포 전/파일명 불일치 | 1-2분 후 재시도, manifest images와 파일 비교 |
+| graph 190 에러 | 토큰 만료 | System User 토큰 재발급 → `IG_ACCESS_TOKEN` 갱신 |
+| 같은 update 중복 반영 | offset 유실 | `state/telegram.json` 지우지 말 것 |
+| state가 초기화됨 | 웹 업로드로 state/ 덮어씀 | 웹에서 파일 올릴 때 state/는 건드리지 않기 |
 
-## 9. 불변 규칙
+## 8. 불변 규칙
 
-- 워크플로 cron, publisher의 승인 검사(`approvals[slot] is True`), 텔레그램 chat id 검사는 바꾸지 않는다.
-- 실제 게시는 Bryan의 명시적 OK 이후에만 수동 실행한다 (cron 게시는 승인 게이트가 지킨다).
-- 토큰·시크릿 값은 출력·커밋·로그·인용 금지.
+- publisher의 승인 검사(`approvals[slot] is True`), 텔레그램 chat id 검사, cron은 바꾸지 않는다.
+- Drive `uploads/` 폴더는 본인 + 서비스 계정(읽기)만 공유 유지 — render가 이 폴더의
+  build.py를 실행하므로 쓰기 권한 공유는 코드 주입 통로가 된다.
+- 토큰·시크릿 값은 출력·커밋·로그 금지.

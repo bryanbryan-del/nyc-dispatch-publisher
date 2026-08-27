@@ -1,14 +1,11 @@
-# 아침 미리보기: 텔레그램으로 오늘 세트(앨범+캡션+승인 버튼)를 보낸다.
-# posts/ 에 카드가 커밋되면(push) 즉시 발송하고, cron 은 push 를 놓친 날의 백업이다.
-# 하루 1회 발송은 state 의 preview_sent 플래그가 보장한다 (수동 실행은 항상 재발송).
-name: preview
+# 승인 수거 + 즉시 확인 답장: ET 낮 시간대에 10분마다 텔레그램 승인(버튼/명령)을
+# 수거해 state 에 기록한다. 변경이 있으면 approvals.py 가 "승인 상태 변경: ✅ ..."
+# 확인 메시지를 보내므로, Bryan 은 승인 후 늦어도 10분 안에 답장을 받는다.
+# (기존에는 게시 시각에만 수거해서 승인이 눌렸는지 알 길이 없었다)
+name: approvals
 on:
-  push:
-    branches: [main]
-    paths:
-      - "posts/**"
   schedule:
-    - cron: "50 11,12 * * *" # 7:50 ET (EDT=11:50 UTC, EST=12:50 UTC) 백업 발화
+    - cron: "*/10 11-23,0-2 * * *" # ET 낮~밤 (EDT 7:00-22:50 / EST 6:00-21:50 커버)
   workflow_dispatch: {}
 
 concurrency:
@@ -18,7 +15,7 @@ permissions:
   contents: write
 
 jobs:
-  preview:
+  approvals:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -27,12 +24,12 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - run: pip install -r requirements.txt
-      - name: Send preview to Telegram
+      - run: pip install requests
+      - name: Collect Telegram approvals
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-        run: python scripts/preview.py
+        run: python scripts/approvals.py
       - name: Commit state
         if: always()
         run: |
@@ -40,6 +37,6 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add state
           if git diff --cached --quiet; then echo "no state changes"; exit 0; fi
-          git commit -m "state: preview $(date -u +%FT%TZ)"
+          git commit -m "state: approvals $(date -u +%FT%TZ)"
           git pull --rebase origin main
           git push origin main
