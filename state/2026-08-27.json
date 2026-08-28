@@ -1,7 +1,7 @@
 {
   "approvals": {
     "free": true,
-    "food": true,
+    "food": false,
     "gem": true,
     "art": true,
     "night": true
