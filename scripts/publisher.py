@@ -122,11 +122,71 @@ def run(slot, dry_run):
     print(f"published {slot}: {permalink}")
 
 
+def catchup():
+    """승인됐고 슬롯 시각이 지났는데 아직 안 올라간 슬롯을 게시한다.
+
+    GitHub Actions 의 cron 은 몇 시간씩 밀리거나 아예 발화하지 않는 날이 있다
+    (2026-08-27: publish cron 이 하루 종일 한 번도 안 돌았다). 그래서 10분마다
+    도는 approvals 워크플로가 이 함수를 호출해 밀린 슬롯을 따라잡는다.
+
+    - 승인 게이트는 run() 이 그대로 지킨다 (approvals[slot] is True 일 때만)
+    - 슬롯 시각(HH:30 ET) 전에는 절대 먼저 올리지 않는다
+    - 한 번에 한 슬롯만 올린다. 밀린 게 여러 개여도 10분 간격으로 하나씩 나가서
+      연속 게시가 Meta 의 스팸 감지에 걸리지 않는다
+    - 실패한 슬롯은 state 의 failed 에 기록하고 그날은 다시 시도하지 않는다
+      (Meta 차단 상황에서 10분마다 재시도해 차단을 키우는 것을 막는다)
+    """
+    date = today_et()
+    manifest = load_manifest(date)
+    if not manifest:
+        print(f"no manifest for {date}; nothing to catch up")
+        return
+    state = load_state(date)
+    n = now_et()
+    published = state.get("published", {})
+    failed = state.get("failed", {})
+
+    def is_due(slot):
+        h = SLOT_HOURS[slot]
+        return n.hour > h or (n.hour == h and n.minute >= 30)
+
+    due = [s for s in SLOTS
+           if s in manifest.get("slots", {})
+           and state["approvals"].get(s) is True
+           and s not in published
+           and s not in failed
+           and is_due(s)]
+    if not due:
+        print(f"nothing due for catchup (ET {n:%H:%M})")
+        return
+
+    slot = due[0]
+    print(f"catchup: {slot} 이 {SLOT_HOURS[slot]}:30 ET 부터 밀려 있음 - 지금 게시")
+    try:
+        run(slot, False)
+    except Exception as e:  # error text is token-free by construction (common.py)
+        state = load_state(date)
+        state.setdefault("failed", {})[slot] = {
+            "error": str(e)[:300],
+            "at": now_et().isoformat(timespec="seconds"),
+        }
+        save_state(date, state)
+        tg_send(f"❌ {slot.upper()} 자동 게시 실패 (오늘은 자동 재시도하지 않습니다)\n{e}",
+                ignore_errors=True)
+        print(f"catchup failed for {slot}: {e}")
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--slot", default="", help="free/food/gem/art/night (빈 값이면 ET 시각으로 결정)")
     ap.add_argument("--dry-run", action="store_true")
+    ap.add_argument("--catchup", action="store_true",
+                    help="승인됐는데 슬롯 시각이 지나도록 안 올라간 것을 하나 게시 (cron 지연 대비)")
     args = ap.parse_args()
+
+    if args.catchup:
+        catchup()  # 실패해도 워크플로를 빨갛게 만들지 않는다 (10분마다 도는 잡)
+        return
 
     slot = args.slot.strip().lower() or slot_from_time()
     if slot not in SLOTS:

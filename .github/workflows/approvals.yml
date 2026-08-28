@@ -13,6 +13,7 @@ concurrency:
 
 permissions:
   contents: write
+  actions: write # cron 미발화 시 render 워크플로를 깨우기 위함
 
 jobs:
   approvals:
@@ -30,6 +31,40 @@ jobs:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: python scripts/approvals.py
+      # cron 지연/미발화 대비: 슬롯 시각이 지났는데 승인된 채로 안 올라간 것을
+      # 여기서 따라잡는다. 한 번에 하나만 올리므로 10분 간격으로 순차 게시된다.
+      - name: Publish overdue approved slots
+        env:
+          IG_ACCESS_TOKEN: ${{ secrets.IG_ACCESS_TOKEN }}
+          IG_USER_ID: ${{ secrets.IG_USER_ID }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: python scripts/publisher.py --catchup
+
+      # 아침 render cron 이 아예 안 도는 날이 있다. 오늘 카드가 없으면 한 번 깨운다.
+      # (Drive 에 spec 이 아직 없으면 render 가 알아서 조용히 건너뛴다)
+      - name: Kick render if today's cards are missing
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python - <<'PY'
+          import subprocess, sys
+          sys.path.insert(0, "scripts")
+          from common import ROOT, load_state, save_state, now_et, today_et
+          date, n = today_et(), now_et()
+          if (ROOT / "posts" / date / "manifest.json").exists():
+              print("오늘 카드 있음 - 할 일 없음"); raise SystemExit(0)
+          if not ((n.hour == 7 and n.minute >= 20) or (8 <= n.hour < 10)):
+              print(f"render 재시도 창(ET 7:20-10:00) 밖 - 지금 {n:%H:%M}"); raise SystemExit(0)
+          st = load_state(date)
+          if st.get("render_kicked"):
+              print("오늘 이미 render 를 깨웠음"); raise SystemExit(0)
+          subprocess.run(["gh", "workflow", "run", "render.yml", "--ref", "main"], check=True)
+          st["render_kicked"] = True
+          save_state(date, st)
+          print("render 워크플로 발동함")
+          PY
+
       - name: Commit state
         if: always()
         run: |
