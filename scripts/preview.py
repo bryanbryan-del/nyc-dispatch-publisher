@@ -11,6 +11,9 @@
 """
 import os
 import sys
+import time
+
+import requests
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from common import (  # noqa: E402
@@ -20,6 +23,51 @@ from common import (  # noqa: E402
 
 SLOT_LABELS = {"free": "🆓 FREE (1)", "food": "🌮 FOOD (2)", "gem": "💎 GEM (3)",
                "art": "🎨 ART (4)", "night": "🌙 NIGHT (5)"}
+
+
+def wait_for_pages(urls, timeout=300):
+    """모든 이미지가 GitHub Pages 에서 200 이 될 때까지 기다린다.
+
+    render 가 카드를 커밋한 직후 preview 를 발동하는데, Pages 배포는 1-2분 걸린다.
+    그 사이에 앨범을 보내면 텔레그램이 URL 을 못 가져와
+    'WEBPAGE_CURL_FAILED' 로 통째로 실패한다 (2026-08-28: 커밋 4초 뒤 발송).
+    """
+    deadline = time.time() + timeout
+    pending = list(urls)
+    while pending:
+        still = []
+        for u in pending:
+            try:
+                if requests.head(u, timeout=15, allow_redirects=True).status_code != 200:
+                    still.append(u)
+            except requests.RequestException:
+                still.append(u)
+        pending = still
+        if not pending:
+            return True
+        if time.time() >= deadline:
+            print(f"경고: {len(pending)}장이 아직 Pages 에 없음 - 그래도 전송을 시도한다")
+            return False
+        print(f"Pages 배포 대기... {len(pending)}장 미배포")
+        time.sleep(15)
+    return True
+
+
+def send_album(media):
+    """앨범 전송. Pages 배포 직후 텔레그램이 URL 을 캐시된 실패로 기억하는 경우가
+    있어 WEBPAGE_CURL_FAILED 면 캐시버스터를 붙여 한 번 더 시도한다."""
+    payload = {"chat_id": env("TELEGRAM_CHAT_ID"), "media": media}
+    try:
+        return tg("sendMediaGroup", payload)
+    except RuntimeError as e:
+        if "WEBPAGE_CURL_FAILED" not in str(e):
+            raise
+        print(f"앨범 전송 실패({e}) - 20초 후 캐시버스터로 재시도")
+        time.sleep(20)
+        stamp = int(time.time())
+        retry = [{**m, "media": m["media"] + ("&" if "?" in m["media"] else "?") + f"t={stamp}"}
+                 for m in media]
+        return tg("sendMediaGroup", {"chat_id": env("TELEGRAM_CHAT_ID"), "media": retry})
 
 
 def main():
@@ -42,13 +90,18 @@ def main():
         print(f"preview already sent for {date}; skipping ({event})")
         return
 
+    all_urls = [image_url(date, s, f)
+                for s in SLOTS
+                for f in manifest.get("slots", {}).get(s, {}).get("images", [])[:10]]
+    wait_for_pages(all_urls)
+
     sent = 0
     for slot in SLOTS:
         info = manifest.get("slots", {}).get(slot)
         if not info:
             continue
         media = [{"type": "photo", "media": image_url(date, slot, f)} for f in info["images"][:10]]
-        tg("sendMediaGroup", {"chat_id": env("TELEGRAM_CHAT_ID"), "media": media})
+        send_album(media)
         hashtags = " ".join(info.get("hashtags", [])[:MAX_HASHTAGS])
         text = "\n\n".join(
             part for part in (
