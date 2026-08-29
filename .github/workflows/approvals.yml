@@ -1,23 +1,30 @@
-# 승인 수거 + 즉시 확인 답장: ET 낮 시간대에 10분마다 텔레그램 승인(버튼/명령)을
-# 수거해 state 에 기록한다. 변경이 있으면 approvals.py 가 "승인 상태 변경: ✅ ..."
-# 확인 메시지를 보내므로, Bryan 은 승인 후 늦어도 10분 안에 답장을 받는다.
-# (기존에는 게시 시각에만 수거해서 승인이 눌렸는지 알 길이 없었다)
+# 승인 수거 + 즉시 확인 답장 + 밀린 게시 따라잡기 + render 백업 발동.
+#
+# ★ 이 워크플로는 cron 을 믿지 않는다.
+# GitHub Actions 의 schedule 은 "*/10" 을 거의 지키지 않는다. 2026-08-27~29 실측으로
+# 하루 96회 예정 중 실제 발화는 2~3회였고, 2026-08-29(토)에는 아침 내내 한 번도
+# 발화하지 않아 카드 렌더링부터 통째로 누락됐다. 그래서 relay 잡이 5분 뒤 자기
+# 자신을 다시 발동해 체인을 잇는다. **cron 은 하루에 한 번만 맞으면 되고,
+# 그 뒤로는 체인이 밤까지 스스로 굴러간다.**
 name: approvals
 on:
   schedule:
-    - cron: "*/10 11-23,0-2 * * *" # ET 낮~밤 (EDT 7:00-22:50 / EST 6:00-21:50 커버)
+    # 정각(:00)은 Actions 큐가 가장 붐벼 가장 잘 누락된다 - 3분씩 밀어 등록한다
+    - cron: "3,13,23,33,43,53 11-23,0-2 * * *" # ET 낮~밤 (EDT 7:00-22:50 / EST 6:00-21:50)
   workflow_dispatch: {}
-
-concurrency:
-  group: pipeline-state
 
 permissions:
   contents: write
-  actions: write # cron 미발화 시 render 워크플로를 깨우기 위함
+  actions: write # render 를 깨우고 다음 회차를 발동하기 위함
 
 jobs:
   approvals:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
+    # state 를 건드리는 잡만 직렬화한다. relay 는 이 그룹에 넣지 않는다
+    # (5분 대기 동안 그룹을 쥐고 있으면 render/publish 가 막힌다)
+    concurrency:
+      group: pipeline-state
     steps:
       - uses: actions/checkout@v4
         with:
@@ -32,7 +39,7 @@ jobs:
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: python scripts/approvals.py
       # cron 지연/미발화 대비: 슬롯 시각이 지났는데 승인된 채로 안 올라간 것을
-      # 여기서 따라잡는다. 한 번에 하나만 올리므로 10분 간격으로 순차 게시된다.
+      # 여기서 따라잡는다. 한 번에 하나만, 직전 게시로부터 10분 이상 띄워서 올린다.
       - name: Publish overdue approved slots
         env:
           IG_ACCESS_TOKEN: ${{ secrets.IG_ACCESS_TOKEN }}
@@ -41,28 +48,39 @@ jobs:
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: python scripts/publisher.py --catchup
 
-      # 아침 render cron 이 아예 안 도는 날이 있다. 오늘 카드가 없으면 한 번 깨운다.
-      # (Drive 에 spec 이 아직 없으면 render 가 알아서 조용히 건너뛴다)
+      # 아침 render cron 이 아예 안 도는 날이 있다(2026-08-29 실사례). 오늘 카드가
+      # 없으면 깨운다. spec 이 아직 Drive 에 없어 헛방일 수 있으므로 30분 간격으로
+      # 최대 4번까지 시도한다. render 는 manifest 가 이미 있으면 스스로 건너뛴다.
       - name: Kick render if today's cards are missing
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           python - <<'PY'
           import subprocess, sys
+          from datetime import datetime
           sys.path.insert(0, "scripts")
-          from common import ROOT, load_state, save_state, now_et, today_et
+          from common import ET, ROOT, load_state, save_state, now_et, today_et
           date, n = today_et(), now_et()
           if (ROOT / "posts" / date / "manifest.json").exists():
               print("오늘 카드 있음 - 할 일 없음"); raise SystemExit(0)
-          if not ((n.hour == 7 and n.minute >= 20) or (8 <= n.hour < 10)):
-              print(f"render 재시도 창(ET 7:20-10:00) 밖 - 지금 {n:%H:%M}"); raise SystemExit(0)
+          m = n.hour * 60 + n.minute
+          if not (440 <= m <= 1020):  # ET 7:20 - 17:00
+              print(f"render 재시도 창(ET 7:20-17:00) 밖 - 지금 {n:%H:%M}"); raise SystemExit(0)
           st = load_state(date)
-          if st.get("render_kicked"):
-              print("오늘 이미 render 를 깨웠음"); raise SystemExit(0)
+          if int(st.get("render_kicks", 0)) >= 4:
+              print("오늘 render 를 4번 깨웠음 - 더 시도하지 않는다"); raise SystemExit(0)
+          last = st.get("render_kick_at")
+          if last:
+              prev = datetime.fromisoformat(last)
+              if prev.tzinfo is None:
+                  prev = prev.replace(tzinfo=ET)
+              if (n - prev).total_seconds() < 1800:
+                  print(f"최근 30분 내 이미 깨웠음 ({last})"); raise SystemExit(0)
           subprocess.run(["gh", "workflow", "run", "render.yml", "--ref", "main"], check=True)
-          st["render_kicked"] = True
+          st["render_kicks"] = int(st.get("render_kicks", 0)) + 1
+          st["render_kick_at"] = n.isoformat(timespec="seconds")
           save_state(date, st)
-          print("render 워크플로 발동함")
+          print(f"render 워크플로 발동함 ({st['render_kicks']}번째)")
           PY
 
       - name: Commit state
@@ -75,3 +93,61 @@ jobs:
           git commit -m "state: approvals $(date -u +%FT%TZ)"
           git pull --rebase origin main
           git push origin main
+
+  # 체인 유지. cron 이 오늘 단 한 번만 발화해도 여기서부터 5분 간격으로 이어진다.
+  relay:
+    needs: approvals
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - name: Decide whether to keep the chain alive
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python3 - <<'PY'
+          import json, os, urllib.request
+          from datetime import datetime, timedelta, timezone
+          from zoneinfo import ZoneInfo
+
+          repo = os.environ["GITHUB_REPOSITORY"]
+          me = int(os.environ["GITHUB_RUN_ID"])
+          tok = os.environ["GH_TOKEN"]
+
+          n = datetime.now(ZoneInfo("America/New_York"))
+          m = n.hour * 60 + n.minute
+          if not (410 <= m <= 1270):  # ET 6:50 - 21:10 (night 슬롯 20:30 까지 커버)
+              print(f"ET {n:%H:%M} - 활동 창 밖, 오늘 체인 종료"); raise SystemExit(0)
+
+          def runs(status):
+              url = (f"https://api.github.com/repos/{repo}/actions/workflows/"
+                     f"approvals.yml/runs?status={status}&per_page=50")
+              req = urllib.request.Request(url, headers={
+                  "Authorization": f"Bearer {tok}",
+                  "Accept": "application/vnd.github+json"})
+              with urllib.request.urlopen(req, timeout=30) as r:
+                  return json.load(r)["workflow_runs"]
+
+          # 체인이 둘로 갈라지면 더 오래된 쪽만 남긴다. 15분 넘게 살아있는 런은
+          # 멈춘 것으로 보고 무시한다 (그것 때문에 체인이 영영 죽는 걸 막는다).
+          cutoff = datetime.now(timezone.utc) - timedelta(minutes=15)
+          rivals = sorted(
+              r["id"] for s in ("in_progress", "queued") for r in runs(s)
+              if r["id"] < me
+              and datetime.fromisoformat(r["created_at"].replace("Z", "+00:00")) > cutoff
+          )
+          if rivals:
+              print(f"더 오래된 체인 {rivals} 이 살아있음 - 이 체인 종료"); raise SystemExit(0)
+
+          open("GO", "w").write("1")
+          print(f"ET {n:%H:%M} - 체인 유지, 5분 뒤 다음 회차를 발동한다")
+          PY
+
+      - name: Fire the next link in 5 minutes
+        if: ${{ hashFiles('GO') != '' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          sleep 285
+          gh workflow run approvals.yml --ref main --repo "$GITHUB_REPOSITORY"
+          echo "다음 회차 발동함"

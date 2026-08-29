@@ -12,9 +12,11 @@ Bryan 승인 → 승인된 슬롯만 정해진 시각에 Instagram 캐러셀 게
 7:20/35 render.yml  → Drive에서 spec+build.py+render_cards.py 를 받아 카드 렌더링,
                       posts/<날짜>/ 커밋 → 커밋되면 preview 를 직접 발동
 (즉시)  preview.yml → 텔레그램에 슬롯별 앨범 + 캡션 + ✅/⏭ 버튼 (하루 1회, 재발송은 수동 실행)
-10분마다 approvals.yml → ① 승인 수거 + "승인 상태 변경 ✅" 확인 답장
-                      ② 슬롯 시각이 지났는데 안 올라간 승인 슬롯을 따라잡아 게시(하나씩)
-                      ③ 오늘 카드가 없으면 render 를 한 번 깨움(ET 7:20-10:00)
+5분마다 approvals.yml → ① 승인 수거 + "승인 상태 변경 ✅" 확인 답장
+                      ② 슬롯 시각이 지났는데 안 올라간 승인 슬롯을 따라잡아 게시
+                         (하나씩, 직전 게시로부터 10분 이상 띄워서)
+                      ③ 오늘 카드가 없으면 render 를 깨움(ET 7:20-17:00, 30분 간격 최대 4회)
+                      ④ relay 잡이 5분 뒤 자기 자신을 다시 발동해 체인을 잇는다
 10:30   publish.yml → free   (approvals[free] is True 일 때만)
 12:30   publish.yml → food
 15:30   publish.yml → gem
@@ -31,7 +33,7 @@ Bryan 승인 → 승인된 슬롯만 정해진 시각에 Instagram 캐러셀 게
 |---|---|
 | `.github/workflows/render.yml` | Drive의 spec.json으로 카드 렌더링 → posts/ 커밋 → preview 발동. 실패 시 텔레그램 알림 |
 | `.github/workflows/preview.yml` | 미리보기 발송. posts/ push·cron(7:50 ET 백업)·수동. `preview_sent` 플래그로 하루 1회 |
-| `.github/workflows/approvals.yml` | 10분마다 승인 수거 + 확인 답장 + **밀린 슬롯 따라잡기 게시** + render 백업 발동 |
+| `.github/workflows/approvals.yml` | 승인 수거 + 확인 답장 + **밀린 슬롯 따라잡기 게시** + render 백업 발동. **relay 잡이 5분 체인을 스스로 유지** |
 | `.github/workflows/publish.yml` | 슬롯 게시 cron (UTC 0,1,14-17,19,20,22,23시 30분 = 5슬롯 × EDT/EST) |
 | `.github/workflows/ingest.yml` | (fallback) Drive에 완성 이미지가 올라온 날짜를 반입. manifest가 이미 있으면 스킵 |
 | `.github/workflows/selftest.yml` | 시크릿/텔레그램/Instagram/Pages 연결 자가진단 (수동) |
@@ -71,26 +73,35 @@ Bryan 승인 → 승인된 슬롯만 정해진 시각에 Instagram 캐러셀 게
   "approvals": { "free": true, "food": null, "gem": false, "art": null, "night": null },
   "published": { "free": { "media_id": "...", "permalink": "...", "at": "..." } },
   "failed": { "art": { "error": "...", "at": "..." } },
-  "preview_sent": true, "render_kicked": true
+  "preview_sent": true, "render_kicks": 2, "render_kick_at": "..."
 }
 ```
 
 - `approvals`: `true`=승인, `false`=건너뛰기, `null`=대기. **`is True`일 때만 게시** (변경 금지).
 
-## 3-1. cron 지연 대비 (catchup)
+## 3-1. cron 을 믿지 않는 설계 (catchup + relay)
 
-GitHub Actions 의 cron 은 수십 분씩 밀리거나 하루 종일 발화하지 않기도 한다
-(2026-08-27: publish cron 이 한 번도 안 돌았다). 그래서 시각에만 의존하지 않는다:
+GitHub Actions 의 cron 은 밀리는 정도가 아니라 **대부분 발화하지 않는다.**
+2026-08-27~29 실측으로 `*/10` 스케줄이 하루 96회 예정 중 2~3회만 돌았고,
+2026-08-29(토)에는 아침에 render cron 이 한 번도 발화하지 않아 카드가 통째로
+누락됐다. 그래서 시각에도, cron 에도 의존하지 않는다:
 
 - **미리보기**는 카드가 커밋되는 push 로 발동한다 (cron 은 백업)
-- **게시**는 10분마다 도는 approvals 워크플로가 `publisher.py --catchup` 으로 따라잡는다.
-  승인됐고 슬롯 시각(HH:30 ET)이 지났는데 아직 안 올라간 슬롯을 **한 번에 하나씩** 올린다
-  (여러 개가 밀려도 10분 간격으로 나가서 Meta 스팸 감지에 걸리지 않는다)
-- **렌더링**은 오늘 카드가 없으면 approvals 가 ET 7:20-10:00 사이에 render 를 한 번 깨운다
+- **approvals 체인**: approvals.yml 의 `relay` 잡이 5분을 기다렸다가 자기 자신을
+  다시 발동한다. **cron 은 하루에 한 번만 맞으면 되고**, 그 뒤로는 체인이
+  ET 21:10 까지 스스로 굴러간다. 체인이 둘로 갈라지면 더 오래된 쪽만 살아남고,
+  15분 넘게 멈춘 런은 무시해 체인이 영영 죽지 않게 한다
+- **게시**는 그 체인이 `publisher.py --catchup` 으로 따라잡는다. 승인됐고 슬롯
+  시각(HH:30 ET)이 지났는데 아직 안 올라간 슬롯을 **한 번에 하나씩**,
+  그리고 **직전 게시로부터 10분 이상 띄워서** 올린다 (체인 주기가 5분이어도
+  인스타에는 10분 미만 간격으로 연속 게시되지 않는다 - Meta 스팸 감지 회피)
+- **렌더링**은 오늘 카드가 없으면 체인이 ET 7:20-17:00 사이에 render 를
+  30분 간격으로 최대 4번 깨운다. render 는 카드가 이미 있거나 Drive 에 spec 이
+  없으면 스스로 조용히 건너뛰므로 헛방이 안전하다
 - 게시 실패는 `state/<날짜>.json` 의 `failed` 에 기록되고 **그날은 자동 재시도하지 않는다**
-  (Meta 차단 중 10분마다 재시도해 차단을 키우는 것을 막는다). 재시도는 수동 dispatch 로
+  (Meta 차단 중 반복 재시도로 차단을 키우는 것을 막는다). 재시도는 수동 dispatch 로
 
-따라서 슬롯 시각보다 최대 10분 늦게 나갈 수 있고, cron 이 죽어도 게시는 계속된다.
+따라서 슬롯 시각보다 최대 5-10분 늦게 나갈 수 있고, cron 이 거의 죽어도 게시는 계속된다.
 
 ## 4. 시간과 DST
 
@@ -102,7 +113,7 @@ Actions cron은 5~30분 지연될 수 있으며, 미리보기는 push 발동이�
 
 - 버튼 `✅ <SLOT> 승인` / `⏭ 건너뛰기`, 또는 글 명령 `ok all` / `ok free` / `ok 1 3` / `skip food`
   (1=free 2=food 3=gem 4=art 5=night, 오늘 세트에 적용)
-- 승인은 10분 주기 approvals 워크플로가 수거하며, 반영되면 **"승인 상태 변경: ✅ FREE" 확인
+- 승인은 5분 주기 approvals 체인이 수거하며, 반영되면 **"승인 상태 변경: ✅ FREE" 확인
   메시지가 온다.** 이 메시지가 곧 "잘 눌렸다"는 증거다.
 - 등록된 `TELEGRAM_CHAT_ID` 외의 채팅은 전부 무시 (변경 금지).
 
@@ -124,10 +135,10 @@ gh workflow run publish.yml -f slot=free        # 슬롯 시각을 놓쳤을 때
 | 증상 | 원인 | 조치 |
 |---|---|---|
 | 렌더링 실패 텔레그램 알림 | spec.json 카드에 when/where/cost 등 키 누락이 대부분 | Drive의 spec.json 확인 후 `render.yml -f force=true` |
-| 미리보기가 안 옴 | render 미실행/실패 (경고 메시지는 하루 1회 옴) | Actions에서 render 로그 확인 → force 재실행 |
-| 승인 확인 답장이 안 옴 | approvals 수거 전(최대 10분) 또는 다른 채팅에서 누름 | 10분 기다려도 없으면 `gh workflow run approvals.yml` |
-| `not approved ... nothing published` | 승인 안 함(정상) | 승인하면 10분 안에 catchup 이 올린다 |
-| 슬롯 시각이 지났는데 안 올라감 | cron 미발화 | 10분 내 catchup 이 처리. 그래도 안 되면 `state` 의 `failed` 확인 |
+| 미리보기가 안 옴 | render cron 미발화 (2026-08-29 실사례) 또는 렌더 실패 | `gh workflow run approvals.yml` 로 체인을 깨우면 render 를 대신 발동한다 |
+| 승인 확인 답장이 안 옴 | approvals 체인이 끊김(cron 미발화) 또는 다른 채팅에서 누름 | 10분 기다려도 없으면 `gh workflow run approvals.yml` (체인이 다시 살아난다) |
+| `not approved ... nothing published` | 승인 안 함(정상) | 승인하면 5-10분 안에 catchup 이 올린다 |
+| 슬롯 시각이 지났는데 안 올라감 | cron 미발화 | 5-10분 내 catchup 이 처리. 그래도 안 되면 `state` 의 `failed` 확인 |
 | `API access blocked (code 200)` | Meta 계정/앱 임시 제한 | developers.facebook.com 계정 확인 완료 후 재시도, 반복 호출 금지 |
 | `image not reachable (HTTP 404)` | Pages 배포 전/파일명 불일치 | 1-2분 후 재시도, manifest images와 파일 비교 |
 | graph 190 에러 | 토큰 만료 | System User 토큰 재발급 → `IG_ACCESS_TOKEN` 갱신 |

@@ -122,7 +122,7 @@ def main():
     tg_send(
         "미리보기 끝. 버튼을 누르거나 글로 승인하세요: "
         "`ok all` / `ok free` / `ok 1 3` / `skip food`\n"
-        "승인은 10분 안에 '승인 상태 변경' 확인 메시지로 답장됩니다.",
+        "승인은 5분 안에 '승인 상태 변경' 확인 메시지로 답장됩니다.",
         parse_mode="Markdown",
     )
     print(f"preview sent for {date}: {sent} slot(s) ({event})")

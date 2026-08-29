@@ -14,14 +14,18 @@ import argparse
 import os
 import sys
 import time
+from datetime import datetime
 
 import requests
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from common import (  # noqa: E402
-    MAX_HASHTAGS, SLOT_HOURS, SLOTS, env, graph_get, graph_post, image_url,
+    ET, MAX_HASHTAGS, SLOT_HOURS, SLOTS, env, graph_get, graph_post, image_url,
     load_manifest, load_state, now_et, save_state, tg_send, today_et,
 )
+
+# 연속 게시 최소 간격(분). 따라잡기 주기가 빨라져도 이 간격은 지킨다.
+MIN_PUBLISH_GAP_MIN = 10
 
 
 def slot_from_time():
@@ -131,8 +135,9 @@ def catchup():
 
     - 승인 게이트는 run() 이 그대로 지킨다 (approvals[slot] is True 일 때만)
     - 슬롯 시각(HH:30 ET) 전에는 절대 먼저 올리지 않는다
-    - 한 번에 한 슬롯만 올린다. 밀린 게 여러 개여도 10분 간격으로 하나씩 나가서
-      연속 게시가 Meta 의 스팸 감지에 걸리지 않는다
+    - 한 번에 한 슬롯만, 그리고 직전 게시로부터 MIN_PUBLISH_GAP_MIN 분이 지나야
+      올린다. 밀린 게 여러 개여도 10분 간격으로 하나씩 나가서 연속 게시가
+      Meta 의 스팸 감지에 걸리지 않는다 (호출 주기와 무관하게 보장된다)
     - 실패한 슬롯은 state 의 failed 에 기록하고 그날은 다시 시도하지 않는다
       (Meta 차단 상황에서 10분마다 재시도해 차단을 키우는 것을 막는다)
     """
@@ -159,6 +164,23 @@ def catchup():
     if not due:
         print(f"nothing due for catchup (ET {n:%H:%M})")
         return
+
+    # 게시 간격은 호출 주기가 아니라 직전 게시 시각으로 지킨다. approvals 체인이
+    # 5분마다 돌아도 인스타에는 10분 미만 간격으로 연속 게시되지 않는다.
+    stamps = [v.get("at") for v in published.values() if v.get("at")]
+    if stamps:
+        try:
+            prev = datetime.fromisoformat(max(stamps))
+        except ValueError:
+            prev = None
+        if prev is not None:
+            if prev.tzinfo is None:
+                prev = prev.replace(tzinfo=ET)
+            gap = (n - prev).total_seconds() / 60
+            if gap < MIN_PUBLISH_GAP_MIN:
+                print(f"직전 게시 후 {gap:.0f}분 - 최소 {MIN_PUBLISH_GAP_MIN}분 간격을 지켜 "
+                      f"{due[0]} 은 다음 회차로 미룬다")
+                return
 
     slot = due[0]
     print(f"catchup: {slot} 이 {SLOT_HOURS[slot]}:30 ET 부터 밀려 있음 - 지금 게시")
