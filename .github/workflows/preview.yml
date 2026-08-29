@@ -1,6 +1,7 @@
 # 아침 미리보기: 텔레그램으로 오늘 세트(앨범+캡션+승인 버튼)를 보낸다.
 # posts/ 에 카드가 커밋되면(push) 즉시 발송하고, cron 은 push 를 놓친 날의 백업이다.
 # 하루 1회 발송은 state 의 preview_sent 플래그가 보장한다 (수동 실행은 항상 재발송).
+# 발송 후 approvals 체인을 깨워, 미리보기가 갔는데 승인이 수거되지 않는 상태를 막는다.
 name: preview
 on:
   push:
@@ -16,6 +17,7 @@ concurrency:
 
 permissions:
   contents: write
+  actions: write # 승인 체인을 깨우기 위함
 
 jobs:
   preview:
@@ -33,6 +35,16 @@ jobs:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: python scripts/preview.py
+      # 미리보기가 나갔으면 승인 체인이 반드시 돌고 있어야 한다. approvals 는
+      # cron 이 하루에 한 번만 맞으면 스스로 이어지지만, 그 한 번마저 놓치는 날이
+      # 있다(2026-08-29). preview 는 posts/ push 로도 발동하므로 cron 과 무관한
+      # 두 번째 씨앗이 된다. 이미 체인이 살아있으면 relay 가 알아서 하나만 남긴다.
+      - name: Seed the approval chain
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run approvals.yml --ref main || echo "체인 발동 실패(무시)"
+
       - name: Commit state
         if: always()
         run: |

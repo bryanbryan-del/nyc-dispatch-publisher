@@ -32,7 +32,7 @@ Bryan 승인 → 승인된 슬롯만 정해진 시각에 Instagram 캐러셀 게
 | 경로 | 역할 |
 |---|---|
 | `.github/workflows/render.yml` | Drive의 spec.json으로 카드 렌더링 → posts/ 커밋 → preview 발동. 실패 시 텔레그램 알림 |
-| `.github/workflows/preview.yml` | 미리보기 발송. posts/ push·cron(7:50 ET 백업)·수동. `preview_sent` 플래그로 하루 1회 |
+| `.github/workflows/preview.yml` | 미리보기 발송. posts/ push·cron(7:50 ET 백업)·수동. `preview_sent` 플래그로 하루 1회. 발송 후 승인 체인을 깨움 |
 | `.github/workflows/approvals.yml` | 승인 수거 + 확인 답장 + **밀린 슬롯 따라잡기 게시** + render 백업 발동. **relay 잡이 5분 체인을 스스로 유지** |
 | `.github/workflows/publish.yml` | 슬롯 게시 cron (UTC 0,1,14-17,19,20,22,23시 30분 = 5슬롯 × EDT/EST) |
 | `.github/workflows/ingest.yml` | (fallback) Drive에 완성 이미지가 올라온 날짜를 반입. manifest가 이미 있으면 스킵 |
@@ -91,6 +91,9 @@ GitHub Actions 의 cron 은 밀리는 정도가 아니라 **대부분 발화하�
   다시 발동한다. **cron 은 하루에 한 번만 맞으면 되고**, 그 뒤로는 체인이
   ET 21:10 까지 스스로 굴러간다. 체인이 둘로 갈라지면 더 오래된 쪽만 살아남고,
   15분 넘게 멈춘 런은 무시해 체인이 영영 죽지 않게 한다
+- 체인의 씨앗은 두 갈래다: approvals cron(하루 96회 등록, 한 번만 맞으면 됨)과
+  **preview 발송 직후의 발동**. preview 는 posts/ push 로도 도니까 cron 과 무관하다.
+  둘 다 실패한 날은 `gh workflow run approvals.yml` 한 번이면 체인이 살아난다
 - **게시**는 그 체인이 `publisher.py --catchup` 으로 따라잡는다. 승인됐고 슬롯
   시각(HH:30 ET)이 지났는데 아직 안 올라간 슬롯을 **한 번에 하나씩**,
   그리고 **직전 게시로부터 10분 이상 띄워서** 올린다 (체인 주기가 5분이어도
