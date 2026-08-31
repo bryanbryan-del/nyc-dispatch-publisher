@@ -1,6 +1,6 @@
 {
   "approvals": {
-    "free": null,
+    "free": true,
     "food": null,
     "gem": null,
     "art": null,
