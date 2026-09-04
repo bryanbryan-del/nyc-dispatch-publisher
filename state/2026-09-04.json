@@ -6,7 +6,13 @@
     "art": true,
     "night": null
   },
-  "published": {},
+  "published": {
+    "art": {
+      "media_id": "18352011616172314",
+      "permalink": "https://www.instagram.com/p/Dc4eHFAjCwj/",
+      "at": "2026-09-04T18:34:27-04:00"
+    }
+  },
   "render_kicks": 1,
   "render_kick_at": "2026-09-04T10:51:58-04:00",
   "preview_sent": true
