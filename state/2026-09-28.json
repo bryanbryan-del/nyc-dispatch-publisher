@@ -1,12 +1,18 @@
 {
   "approvals": {
-    "free": null,
+    "free": true,
     "food": null,
     "gem": null,
     "art": null,
     "night": null
   },
-  "published": {},
+  "published": {
+    "free": {
+      "media_id": "17903091060594888",
+      "permalink": "https://www.instagram.com/p/Dd116uajR__/",
+      "at": "2026-09-28T14:36:15-04:00"
+    }
+  },
   "render_kicks": 1,
   "render_kick_at": "2026-09-28T14:32:04-04:00",
   "preview_sent": true
