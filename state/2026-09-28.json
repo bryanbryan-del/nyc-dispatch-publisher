@@ -15,5 +15,11 @@
   },
   "render_kicks": 1,
   "render_kick_at": "2026-09-28T14:32:04-04:00",
-  "preview_sent": true
+  "preview_sent": true,
+  "failed": {
+    "food": {
+      "error": "graph POST /17841430349591611/media_publish failed: Media ID is not available (code 9007)",
+      "at": "2026-09-28T14:46:50-04:00"
+    }
+  }
 }
