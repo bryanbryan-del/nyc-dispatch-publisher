@@ -1,9 +1,9 @@
 {
   "approvals": {
     "free": true,
-    "food": null,
+    "food": true,
     "gem": null,
-    "art": null,
+    "art": true,
     "night": null
   },
   "published": {
