@@ -6,5 +6,7 @@
     "art": null,
     "night": null
   },
-  "published": {}
+  "published": {},
+  "render_kicks": 1,
+  "render_kick_at": "2026-10-01T13:18:26-04:00"
 }
