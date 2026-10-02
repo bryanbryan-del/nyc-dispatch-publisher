@@ -3,7 +3,7 @@
     "free": null,
     "food": null,
     "gem": null,
-    "art": null,
+    "art": false,
     "night": null
   },
   "published": {},
