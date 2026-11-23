@@ -6,5 +6,6 @@
     "art": null,
     "night": null
   },
-  "published": {}
+  "published": {},
+  "preview_warned": true
 }
